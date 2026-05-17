@@ -42,11 +42,11 @@ function mkTmpDir() {
           return { get: (v) => (rows.has(v) ? { hit: 1 } : undefined) };
         }
         if (trimmed.startsWith("UPDATE schema_migrations SET version")) {
-          return { run: (newV, oldV) => {
+          return { run: (newV, newChecksum, oldV) => {
             const r = rows.get(oldV);
             if (!r) return;
             rows.delete(oldV);
-            rows.set(newV, { ...r, version: newV });
+            rows.set(newV, { ...r, version: newV, checksum: newChecksum });
           } };
         }
         if (trimmed.startsWith("DELETE FROM schema_migrations")) {
@@ -66,13 +66,16 @@ function mkTmpDir() {
   };
   function reconcile(db) {
     const sel = db.prepare("SELECT 1 AS hit FROM schema_migrations WHERE version = ?");
-    const upd = db.prepare("UPDATE schema_migrations SET version = ? WHERE version = ?");
+    const upd = db.prepare("UPDATE schema_migrations SET version = ?, checksum = ? WHERE version = ?");
     const del = db.prepare("DELETE FROM schema_migrations WHERE version = ?");
     const rewritten = [];
     for (const [oldV, newV] of Object.entries(RENAME_MAP)) {
       if (!sel.get(oldV)) continue;
       if (sel.get(newV)) del.run(oldV);
-      else upd.run(newV, oldV);
+      // Empty checksum here mirrors the production fallback when the on-disk
+      // file is missing — the real path recomputes from disk. The validation
+      // loop in migrationRunner.js skips entries with empty checksums.
+      else upd.run(newV, "", oldV);
       rewritten.push(`${oldV} → ${newV}`);
     }
     return rewritten;

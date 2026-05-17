@@ -96,13 +96,22 @@ const INF_008_RENAME_MAP = {
  * name (e.g. operator manually re-applied the renamed file before upgrading)
  * the OLD row is deleted instead of UPDATEd so we don't violate the PK.
  *
+ * The checksum is recomputed from the on-disk renamed file and written
+ * alongside the new version. Eleven of the renamed files had their `-- Migration NNN:`
+ * header bumped during INF-008, so the stored checksum (computed against the
+ * pre-rename content) no longer matches the on-disk bytes. Without rewriting
+ * the checksum here, the validation loop below would fire a false-positive
+ * `⚠️ file changed after it was applied` warning for each of those files on
+ * every startup of a pre-INF-008 database — drowning out any genuine
+ * tampered-file warning the checksum system is meant to surface.
+ *
  * @param {Object} db — Database adapter instance.
  * @returns {string[]} list of `${old} → ${new}` strings actually rewritten.
  */
 function reconcileRenamedMigrations(db) {
   const rewritten = [];
   const selectStmt = db.prepare("SELECT 1 AS hit FROM schema_migrations WHERE version = ?");
-  const updateStmt = db.prepare("UPDATE schema_migrations SET version = ? WHERE version = ?");
+  const updateStmt = db.prepare("UPDATE schema_migrations SET version = ?, checksum = ? WHERE version = ?");
   const deleteStmt = db.prepare("DELETE FROM schema_migrations WHERE version = ?");
   for (const [oldVersion, newVersion] of Object.entries(INF_008_RENAME_MAP)) {
     const oldRow = selectStmt.get(oldVersion);
@@ -111,7 +120,21 @@ function reconcileRenamedMigrations(db) {
     if (newRow) {
       deleteStmt.run(oldVersion);
     } else {
-      updateStmt.run(newVersion, oldVersion);
+      // Recompute checksum from the new on-disk file so the validation loop
+      // doesn't flag the rename as a tampered file. Fall back to an empty
+      // string (matches the `ALTER TABLE … DEFAULT ''` upgrade path) if the
+      // file is missing for any reason — the validation loop skips empty
+      // checksums, so we degrade to a no-op rather than crashing on startup.
+      let newChecksum = "";
+      try {
+        const filePath = path.join(MIGRATIONS_DIR, `${newVersion}.sql`);
+        if (fs.existsSync(filePath)) {
+          newChecksum = checksum(fs.readFileSync(filePath, "utf-8"));
+        }
+      } catch {
+        /* keep newChecksum = "" — validation loop skips empty checksums */
+      }
+      updateStmt.run(newVersion, newChecksum, oldVersion);
     }
     rewritten.push(`${oldVersion} → ${newVersion}`);
   }
