@@ -31,7 +31,7 @@
 // the worker compose command) all pass `--import ./src/otel-preload.mjs`.
 import dotenv from "dotenv";
 import * as Sentry from "@sentry/node";
-import { getDatabase, closeDatabase } from "./database/sqlite.js";
+import { getDatabase, closeDatabase, getDatabaseDialect } from "./database/sqlite.js";
 import { migrateFromJsonIfNeeded } from "./database/migrate.js";
 import * as runRepo from "./database/repositories/runRepo.js";
 import { formatLogLine, structuredLog } from "./utils/logFormatter.js";
@@ -340,11 +340,21 @@ app.use("/api", (req, res, next) => {
 
 // ─── Health probes (root-level, not under /api, no auth required) ────────────
 // GET /health  — liveness: is the process alive?
+//
+// `db` surfaces the active database dialect (`"postgres"` / `"sqlite"`) so
+// operators and CI smoke tests (NEXT.md INF-008 acceptance criterion 3:
+// "Fresh `docker compose up` … `GET /health` reports `db: postgres`") can
+// verify the Postgres-default flip without poking around the container.
+// `getDatabaseDialect()` is a pure accessor over the already-open adapter;
+// wrap defensively so a transient DB hiccup never demotes liveness to 5xx.
 app.get("/health", (_req, res) => {
+  let db = "unknown";
+  try { db = getDatabaseDialect(); } catch { /* keep "unknown" */ }
   res.json({
     ok: true,
     uptime: Math.floor(process.uptime()),
     version: process.env.npm_package_version || "unknown",
+    db,
   });
 });
 
