@@ -43,8 +43,34 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createRequire } from "module";
 import { formatLogLine } from "../../utils/logFormatter.js";
 
-const { Pool } = pg;
+const { Pool, types: pgTypes } = pg;
 const _require = createRequire(import.meta.url);
+
+// ─── Type parsers ──────────────────────────────────────────────────────────────
+// pg / pg-native default to returning BIGINT (OID 20) and NUMERIC (OID 1700) as
+// JavaScript STRINGS to preserve precision beyond 2^53. SQLite (via
+// better-sqlite3) returns the same values as JS numbers. The repository layer
+// is shared across both backends and assumes JS numbers — `db.prepare(...).run()`
+// callers test `result.changes === 1`, `COUNT(*) AS count` callers do strict
+// equality on the result, and `rowCount` comparisons rely on numeric types.
+//
+// Postgres-only failures observed on the dual-DB CI matrix included:
+//   - `'3' !== 3` from `accessibility-violation-repo.test.js`
+//     (`SELECT runId, COUNT(*) AS count` returned `"3"` on Postgres)
+//   - `'1' !== 1` from `pr11-fixes.test.js` healing counts
+//   - `'1' !== 1` from `stale-detector.test.js` `countByReviewStatus`
+//
+// Fix: parse BIGINT (20) and NUMERIC (1700) back to JS numbers at the driver
+// level. Sentri's actual BIGINT range stays well under `Number.MAX_SAFE_INTEGER`
+// (2^53 ≈ 9.007e15) — even millisecond epoch timestamps cap at ~10^13, which
+// is 3 orders of magnitude under the safe integer ceiling. The precision-loss
+// risk that motivates pg's default would only matter for legitimately huge
+// counters (e.g. 100T-row aggregates), which Sentri doesn't have.
+//
+// Both `pg-native` (via libpq) and the `pg` JS driver share `pg.types`'s
+// type-parser registry, so registering here covers both adapter paths.
+pgTypes.setTypeParser(20, (val) => (val === null ? null : Number(val))); // int8/BIGINT
+pgTypes.setTypeParser(1700, (val) => (val === null ? null : Number(val))); // NUMERIC
 
 // Try to load pg-native for synchronous query support
 let PgNative = null;
@@ -370,6 +396,15 @@ const _COL_MAP = buildColumnMap([
   "ownerId",
   // workspace_members (ACL-001)
   "joinedAt",
+  // github_check_settings (INT-002 / INT-002b — migration 025)
+  // Without these entries `settings.installationId` / `settings.repo` /
+  // `settings.githubCheck` return as `undefined` on Postgres because
+  // unquoted identifiers fold to lowercase at the storage layer. That
+  // silently breaks the INT-002b encrypted-installationId read path —
+  // `decryptString(undefined)` returns null per the legacy-plaintext
+  // contract, so `getByProjectId('PRJ-GH').installationId` reads as null
+  // even when the column is correctly persisted as `enc:v1:…` ciphertext.
+  "installationId", "githubCheck",
 ]);
 
 /**
