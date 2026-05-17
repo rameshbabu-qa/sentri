@@ -1,8 +1,8 @@
--- Migration 017: confidence scoring + auto-approval thresholds/provenance
+-- Migration 020: confidence scoring + auto-approval thresholds/provenance
 -- (AUTO-003b)
 --
 -- Idempotency note: uses bare `ALTER TABLE ... ADD COLUMN` per the
--- convention followed by migrations 003, 006, 007, 011, 014, 015, 018.
+-- convention followed by migrations 003, 006, 007, 012, 015, 017, 021.
 -- Idempotency is guaranteed at the *runner* level — `schema_migrations`
 -- tracks applied versions (`backend/src/database/migrationRunner.js`), so
 -- re-running a file is a no-op. `ADD COLUMN IF NOT EXISTS` was considered

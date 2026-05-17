@@ -1,4 +1,4 @@
--- Migration 011: Run retry metadata (AUTO-005)
+-- Migration 012: Run retry metadata (AUTO-005)
 -- Tracks aggregated retry telemetry for run-level analytics.
 
 ALTER TABLE runs ADD COLUMN retryCount INTEGER NOT NULL DEFAULT 0;

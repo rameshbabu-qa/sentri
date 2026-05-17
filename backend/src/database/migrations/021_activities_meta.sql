@@ -1,4 +1,4 @@
--- Migration 018: structured metadata column on activities for AUTO-003b.
+-- Migration 021: structured metadata column on activities for AUTO-003b.
 --
 -- The auto-approval pipeline (testPersistence.js) and the revoke handler
 -- (routes/tests.js) need to attach typed metadata to activity rows

@@ -8,19 +8,13 @@
 
 ## Hosted production note (Render / Fly / Railway)
 
-> ⚠️ Free-tier root filesystems are often ephemeral. Without a mounted persistent volume, SQLite data can be lost after redeploys.
-
-For Render, use the repo `render.yaml` Blueprint, which mounts a disk at `/app/backend/data` and uses:
-
-```bash
-DB_PATH=/app/backend/data/sentri.db
-```
-
-For horizontally-scaled deployments, switch to managed Postgres:
+Sentri defaults to **PostgreSQL** for both local Docker and production deployments. Point `DATABASE_URL` at your managed Postgres instance:
 
 ```bash
 DATABASE_URL=postgres://user:pass@host:5432/sentri
 ```
+
+> ⚠️ The SQLite escape hatch is still supported for single-instance demos (unset `DATABASE_URL`), but free-tier root filesystems are often ephemeral — without a mounted persistent volume, SQLite data can be lost after redeploys, and horizontally-scaled deployments cannot share a SQLite file across replicas. For Render's SQLite quick-start, the repo `render.yaml` Blueprint mounts a disk at `/app/backend/data` and sets `DB_PATH=/app/backend/data/sentri.db`.
 
 ## Option A: Docker (Recommended)
 
@@ -52,31 +46,31 @@ Open [http://localhost:3000](http://localhost:3000) (frontend) — backend runs 
 
 ### Optional services
 
-Both Redis and PostgreSQL ship as **optional profiles** in `docker-compose.yml`. They are not required to try Sentri — SQLite + in-memory stores work fine for single-instance deployments.
+PostgreSQL ships in the **default** `docker-compose.yml` profile — plain `docker compose up` brings up Postgres + the backend with `DATABASE_URL` pre-wired. Redis remains an opt-in profile, and SQLite stays available as an explicit escape hatch.
 
 ```bash
-# Redis only (rate limiting + BullMQ job queue + SSE pub/sub)
+# Default: Postgres-backed stack (matches production)
+docker compose up
+
+# Add Redis (rate limiting + BullMQ job queue + SSE pub/sub)
 docker compose --profile redis up
 
-# PostgreSQL only (horizontally scalable DB)
-docker compose --profile postgres up
-
-# Full stack — Redis + PostgreSQL
-docker compose --profile redis --profile postgres up
+# SQLite escape hatch (single-process only — fastest local boot)
+docker compose --profile sqlite up
 ```
 
-Then uncomment the matching env vars in `backend/.env`:
+Default env vars in `backend/.env` (already set in `.env.example`):
 
 ```bash
 DATABASE_URL=postgres://sentri:sentri@postgres:5432/sentri
-REDIS_URL=redis://redis:6379
+# REDIS_URL=redis://redis:6379                # uncomment when running with --profile redis
 ```
 
 ## Option B: Local Development
 
 ### Minimal setup
 
-Runs everything in-process with SQLite — fastest path to trying Sentri.
+Runs everything in-process with SQLite — fastest path to trying Sentri. Production deployments should use the Postgres-default Docker stack above; this path is the SQLite escape hatch.
 
 **Backend**
 
@@ -178,9 +172,9 @@ Restart the backend. At boot you'll see:
 BullMQ activates automatically when `REDIS_URL` is set **and** `bullmq` is installed. If either is missing, Sentri silently falls back to in-process execution — no config change required.
 :::
 
-### Adding PostgreSQL (optional)
+### Adding PostgreSQL (recommended for local dev too)
 
-PostgreSQL replaces SQLite for horizontal scaling and better write-concurrency. Required for multi-instance deployments.
+PostgreSQL is the default for Sentri — the Docker stack ships it bundled and production deployments require it. These instructions cover installing Postgres 16 natively when you're running the backend outside Docker.
 
 Install PostgreSQL 16 natively:
 

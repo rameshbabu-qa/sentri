@@ -1,4 +1,4 @@
--- Migration 008: Visual regression baselines (DIF-001)
+-- Migration 009: Visual regression baselines (DIF-001)
 --
 -- Stores the baseline (golden) screenshot reference for a given test + step
 -- so future runs can diff against it and surface pixel-level regressions.

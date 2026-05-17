@@ -1,4 +1,4 @@
--- Migration 015: Run secret-scan blocked flag (CAP-003)
+-- Migration 017: Run secret-scan blocked flag (CAP-003)
 --
 -- Persists `run.secretScanBlocked` so CI consumers and the reviewer UI can
 -- distinguish "run rejected for malformed code" from "run rejected because

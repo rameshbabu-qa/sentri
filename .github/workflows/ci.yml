@@ -77,7 +77,7 @@ jobs:
       - name: Run unit & integration tests
         run: npm test
         env:
-          DATABASE_URL: ${{ matrix.db == "postgres" && "postgres://sentri:sentri@localhost:5432/sentri_test" || "" }}
+          DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgres://sentri:sentri@localhost:5432/sentri_test' || '' }}
 
       - name: Lint migration prefixes
         run: node ../scripts/lint-migrations.mjs

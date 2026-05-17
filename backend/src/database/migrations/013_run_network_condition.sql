@@ -1,4 +1,4 @@
--- Migration 012: Run network condition (AUTO-006)
+-- Migration 013: Run network condition (AUTO-006)
 --
 -- Persist the network condition the run was executed under (`fast` /
 -- `slow3g` / `offline`) so historical analytics can answer questions
@@ -7,7 +7,7 @@
 -- documented default).
 --
 -- Nullable TEXT with no default to match the established pattern used
--- for `browser` (migration 009) and `pages` (migration 007). Both
+-- for `browser` (migration 010) and `pages` (migration 008). Both
 -- SQLite and the PostgreSQL adapter (INF-001) handle this form
 -- without dialect translation.
 

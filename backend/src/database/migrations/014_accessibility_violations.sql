@@ -1,4 +1,4 @@
--- Migration 013: Accessibility violations (AUTO-016)
+-- Migration 014: Accessibility violations (AUTO-016)
 -- Persist per-page WCAG violations discovered during crawl.
 
 CREATE TABLE IF NOT EXISTS accessibility_violations (

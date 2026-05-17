@@ -1,4 +1,4 @@
--- Migration 009: Cross-browser support (DIF-002)
+-- Migration 010: Cross-browser support (DIF-002)
 --
 -- Records the browser engine each run used for test execution so the Run
 -- Detail page can show a per-run badge and analytics can break down pass

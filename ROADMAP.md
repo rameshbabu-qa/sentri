@@ -516,25 +516,7 @@ CAP-002's Redis dependency is a single point of failure. Production SaaS deploym
 
 ### INF-008 — Promote PostgreSQL to default; add dual-DB CI matrix 🔴 Blocker
 
-**Status:** 🔲 Planned | **Effort:** M | **Source:** AUDIT.md A3, P1, B4 (formerly `ARCH-001` in AUDIT_IMPL.md)
-
-**Problem:** SQLite is the `.env.example` default in 2026. The PostgreSQL adapter exists (INF-001 ✅) but is second-class — AUDIT.md confirmed `_COL_MAP` drift bugs broke 5+ features in PR #11. Single-writer SQLite cannot support horizontal scale. Migration prefix collisions (`007_*` × 2, `015_*` × 2) compound the risk.
-
-**Fix:** Rename conflicting migration files (`007_run_pages.sql` → `007b_*`, `015_web_vitals_budgets.sql` → `015b_*`); update `migrationRunner.js` to sort numerically then alpha. Change `.env.example` and `docker-compose.yml` default to `DATABASE_URL=postgresql://...` with a bundled Postgres service. Add CI matrix job `db: [sqlite, postgres]` in `ci.yml` running the full `npm test` suite under both. Add a migration linter (`backend/scripts/lint-migrations.mjs`) that fails on duplicate numeric prefixes (overlaps with MNT-014 — coordinate). Add a nightly `pg_dump` CI job as DR baseline.
-
-**Files to change:**
-- Rename two migration files; `backend/src/database/migrationRunner.js` sort fix
-- New `backend/scripts/lint-migrations.mjs`
-- `backend/.env.example`, `docker-compose.yml`, `.github/workflows/ci.yml`
-- New `.github/workflows/nightly-backup.yml`
-
-**Acceptance criteria:**
-- `npm test` passes with both `DATABASE_URL=postgres://...` and `DATABASE_URL=file:./...` in CI.
-- Migration linter fails the build on a prefix collision.
-- `docker compose up` works out-of-the-box with Postgres with zero extra steps.
-- No existing migration files removed or reordered — only the two colliding files renamed.
-
-**Dependencies:** None. **Recommended to land in same sprint as INF-007.** **Bundles naturally with:** MNT-014 (migration linter scope overlap).
+**Status:** ✅ Complete (PR #15) — see Completed Work Summary above for the full implementation details. Shipped scope: colliding migration prefixes resolved by renaming the second `007_*` / `015_*` pair to the next free numeric slots (no more `007b`/`015b` suffixes — the sort key stays a pure integer); `migrationRunner.js` now sorts by numeric prefix first with full-filename tiebreaker and carries a unique-prefix invariant comment at the top; `.env.example` + `docker-compose.yml` flipped to Postgres-default with SQLite kept as an explicit escape hatch; `.github/workflows/ci.yml` runs the backend lane under `db: [sqlite, postgres]` matrix with a Postgres 16 service container; new `scripts/lint-migrations.mjs` walks the migrations folder and exits non-zero on duplicate prefixes (wired into the backend CI lane). The nightly `pg_dump` workflow was deferred to INF-009 (Helm/DR) where it belongs alongside the documented restore playbook + RTO/RPO targets.
 
 ---
 

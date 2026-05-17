@@ -1,4 +1,4 @@
--- Migration 010: Browser-aware visual baselines (DIF-002b gap 1)
+-- Migration 011: Browser-aware visual baselines (DIF-002b gap 1)
 --
 -- Baselines were previously keyed by (testId, stepNumber), which caused
 -- false regressions when Firefox/WebKit captures were compared against a
