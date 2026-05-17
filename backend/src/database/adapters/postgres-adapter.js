@@ -18,6 +18,12 @@
  * Automatically translates common SQLite-isms to PostgreSQL:
  * - `@param` named bindings → `$N` positional parameters
  * - `INTEGER PRIMARY KEY AUTOINCREMENT` → `SERIAL PRIMARY KEY`
+ * - `INTEGER` (standalone column type) → `BIGINT` — Sentri stores
+ *   millisecond epoch timestamps (`Date.now()`, ~1.7T) in `INTEGER` columns;
+ *   PostgreSQL `INTEGER` is 32-bit (max ~2.1B) and overflows, while SQLite's
+ *   dynamic typing accepts arbitrarily large integers. `BIGINT` (64-bit)
+ *   matches SQLite's effective behaviour. Applied after the
+ *   `SERIAL PRIMARY KEY` rule so primary-key columns aren't double-translated.
  * - `datetime('now')` → `NOW()`
  * - `INSERT OR IGNORE` → `INSERT ... ON CONFLICT DO NOTHING`
  * - `INSERT OR REPLACE` → upsert via `ON CONFLICT DO UPDATE SET`
@@ -103,6 +109,23 @@ function translateSingleStatement(stmt) {
 
   // INTEGER PRIMARY KEY AUTOINCREMENT → SERIAL PRIMARY KEY
   out = out.replace(/INTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT/gi, "SERIAL PRIMARY KEY");
+
+  // Standalone INTEGER column type → BIGINT.
+  //
+  // Sentri stores millisecond epoch timestamps (`Date.now()`, ~1.7T) in
+  // columns declared as `INTEGER` (e.g. `tests.approvedAt`, `tests.approvedAt`
+  // from migration 020, run/test timestamps written via runRepo). PostgreSQL
+  // `INTEGER` is 32-bit (max 2,147,483,647) and overflows on any ms-epoch
+  // write — `ERROR: value "1779032956389" is out of range for type integer`.
+  // SQLite is dynamically typed and silently widens, so the same migration
+  // text works there. Promoting every `INTEGER` to `BIGINT` (64-bit) on
+  // Postgres aligns the two backends without rewriting every migration.
+  //
+  // Scope: only matches `INTEGER` as a type token (column declarations + CAST
+  // targets). The earlier `SERIAL PRIMARY KEY` rule already consumed the
+  // PRIMARY-KEY-AUTOINCREMENT form, so this pass won't double-translate.
+  // We deliberately leave `BIGINT`, `SMALLINT`, `INT4`, etc. untouched.
+  out = out.replace(/\bINTEGER\b/gi, "BIGINT");
 
   // INSERT OR IGNORE INTO → INSERT INTO ... ON CONFLICT DO NOTHING
   if (/INSERT\s+OR\s+IGNORE/i.test(out)) {
