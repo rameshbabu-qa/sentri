@@ -20,7 +20,7 @@ function test(name, fn) {
 
 console.log("\n♿ Accessibility migration");
 
-const migrationPath = path.join(process.cwd(), "src/database/migrations/013_accessibility_violations.sql");
+const migrationPath = path.join(process.cwd(), "src/database/migrations/014_accessibility_violations.sql");
 const sql = fs.readFileSync(migrationPath, "utf8");
 
 test("creates accessibility_violations table", () => {
