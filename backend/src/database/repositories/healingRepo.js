@@ -21,10 +21,40 @@ export function get(key) {
  * @param {Object} entry — { strategyIndex, succeededAt, failCount }
  */
 // Lazy migration flag — ensures the strategyVersion column exists before first use.
+//
+// The column is created by migration 001 on fresh databases. This lazy ALTER
+// is only relevant for legacy databases that predate the column being added
+// to the initial schema. Two-step approach so we don't spam Postgres ERROR
+// logs on every startup (the bare try/catch caught the JS exception, but
+// Postgres still logged `ERROR: column "strategyversion" … already exists`):
+//
+//   1. SELECT the column from `information_schema` (Postgres) /
+//      `PRAGMA table_info` (SQLite) — cheap, no side effects.
+//   2. ALTER only if the column is genuinely missing.
+//
+// The outer try/catch stays as a belt-and-braces guard so a race between two
+// startup processes (e.g. backend + worker in the same Docker stack) doesn't
+// surface the "already exists" error if both call this concurrently.
 let _migrated = false;
 function ensureStrategyVersionColumn(db) {
   if (_migrated) return;
-  try { db.prepare("ALTER TABLE healing_history ADD COLUMN strategyVersion INTEGER").run(); } catch { /* already exists */ }
+  try {
+    let hasColumn = false;
+    if (db.dialect === "postgres") {
+      const row = db.prepare(
+        "SELECT 1 AS hit FROM information_schema.columns WHERE table_name = 'healing_history' AND column_name = 'strategyversion'"
+      ).get();
+      hasColumn = !!row;
+    } else {
+      const cols = db.prepare("PRAGMA table_info(healing_history)").all();
+      hasColumn = cols.some((c) => c.name === "strategyVersion");
+    }
+    if (!hasColumn) {
+      try {
+        db.prepare("ALTER TABLE healing_history ADD COLUMN strategyVersion INTEGER").run();
+      } catch { /* concurrent migrator added it first — safe to ignore */ }
+    }
+  } catch { /* schema introspection failed; the column existence check is best-effort */ }
   _migrated = true;
 }
 
