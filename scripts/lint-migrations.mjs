@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export function lintMigrationPrefixes(migrationsDir) {
   const entries = fs.readdirSync(migrationsDir).filter((f) => f.endsWith(".sql"));
@@ -15,7 +16,11 @@ export function lintMigrationPrefixes(migrationsDir) {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const dir = path.resolve(process.cwd(), "backend/src/database/migrations");
+  // Resolve the migrations dir relative to this script file (not cwd) so the
+  // CLI works whether invoked from the repo root or `backend/` (CI runs it
+  // from `backend/` via `node ../scripts/lint-migrations.mjs`).
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const dir = path.resolve(here, "../backend/src/database/migrations");
   const dupes = lintMigrationPrefixes(dir);
   if (dupes.length > 0) {
     for (const [prefix, first, second] of dupes) {

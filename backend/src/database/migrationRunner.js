@@ -36,6 +36,89 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.join(__dirname, "migrations");
 
 /**
+ * INF-008 rename map: pre-INF-008 migration filenames → post-INF-008 names.
+ *
+ * Several migration files were renamed in INF-008 to resolve duplicate numeric
+ * prefixes (e.g. `007_run_pages.sql` collided with `007_quality_score_factors.sql`).
+ * Existing databases recorded the OLD names in `schema_migrations.version`, so
+ * without remapping the runner would treat every renamed file as new pending
+ * work and try to re-execute non-idempotent `ALTER TABLE ... ADD COLUMN`
+ * statements — crashing the server on startup.
+ *
+ * The keys are old `version` values (filename without `.sql`); the values are
+ * the new `version` values that match the on-disk filenames after INF-008.
+ * `reconcileRenamedMigrations()` (called from `runMigrations` before computing
+ * pending) UPDATEs `schema_migrations` so the new files are recognised as
+ * already-applied — no re-execution, no duplicate-column errors.
+ *
+ * Safe to keep indefinitely: the UPDATE is a no-op once a database has been
+ * reconciled (the OLD version row no longer exists), and brand-new databases
+ * never had the old rows in the first place.
+ */
+const INF_008_RENAME_MAP = {
+  "007_run_pages": "008_run_pages",
+  "008_visual_baselines": "009_visual_baselines",
+  "009_run_browser": "010_run_browser",
+  "010_baseline_browser": "011_baseline_browser",
+  "011_run_retry_metadata": "012_run_retry_metadata",
+  "012_run_network_condition": "013_run_network_condition",
+  "013_accessibility_violations": "014_accessibility_violations",
+  "014_quality_gates": "015_quality_gates",
+  "015_mfa_columns": "016_mfa_columns",
+  "015_run_secret_scan_blocked": "017_run_secret_scan_blocked",
+  "015_web_vitals_budgets": "018_web_vitals_budgets",
+  "016_metric_samples": "019_metric_samples",
+  "017_auto_approval": "020_auto_approval",
+  "018_activities_meta": "021_activities_meta",
+  "019_crawl_baselines": "022_crawl_baselines",
+  "020_run_changed_pages": "023_run_changed_pages",
+  "021_run_budget_minutes": "024_run_budget_minutes",
+  "021_run_github_check": "025_run_github_check",
+  "022_run_changed_files": "026_run_changed_files",
+  "023_test_fixtures": "027_test_fixtures",
+  "024_environments": "028_environments",
+  "025_run_shards": "029_run_shards",
+  "026_run_trace_paths": "030_run_trace_paths",
+  "027_run_root_causes": "031_run_root_causes",
+  "028_workspace_mfa_enforcement": "032_workspace_mfa_enforcement",
+  "029_webauthn_credentials": "033_webauthn_credentials",
+  "030_projects_pii_firewall": "034_projects_pii_firewall",
+  "031_activities_compliance": "035_activities_compliance",
+  "032_workspace_siem_config": "036_workspace_siem_config",
+  "033_system_workspace_seed": "037_system_workspace_seed",
+  "034_activities_dedup": "038_activities_dedup",
+};
+
+/**
+ * Rewrite legacy `schema_migrations.version` rows to their post-INF-008 names.
+ *
+ * Each rename is processed atomically: if a row already exists under the NEW
+ * name (e.g. operator manually re-applied the renamed file before upgrading)
+ * the OLD row is deleted instead of UPDATEd so we don't violate the PK.
+ *
+ * @param {Object} db — Database adapter instance.
+ * @returns {string[]} list of `${old} → ${new}` strings actually rewritten.
+ */
+function reconcileRenamedMigrations(db) {
+  const rewritten = [];
+  const selectStmt = db.prepare("SELECT 1 AS hit FROM schema_migrations WHERE version = ?");
+  const updateStmt = db.prepare("UPDATE schema_migrations SET version = ? WHERE version = ?");
+  const deleteStmt = db.prepare("DELETE FROM schema_migrations WHERE version = ?");
+  for (const [oldVersion, newVersion] of Object.entries(INF_008_RENAME_MAP)) {
+    const oldRow = selectStmt.get(oldVersion);
+    if (!oldRow) continue;
+    const newRow = selectStmt.get(newVersion);
+    if (newRow) {
+      deleteStmt.run(oldVersion);
+    } else {
+      updateStmt.run(newVersion, oldVersion);
+    }
+    rewritten.push(`${oldVersion} → ${newVersion}`);
+  }
+  return rewritten;
+}
+
+/**
  * Ensure the schema_migrations tracking table exists.
  * @param {Object} db — Database adapter instance.
  */
@@ -125,6 +208,15 @@ function discoverMigrations() {
  */
 export function runMigrations(db, opts = {}) {
   ensureMigrationsTable(db);
+
+  // INF-008: rewrite legacy version rows BEFORE we compute the pending set, so
+  // renamed migration files aren't seen as new work on existing databases.
+  const rewritten = reconcileRenamedMigrations(db);
+  if (rewritten.length > 0) {
+    console.log(formatLogLine("info", null,
+      `[migrations] reconciled ${rewritten.length} legacy version row(s) post-INF-008 rename`
+    ));
+  }
 
   // Lazy-load translateSql only when running against PostgreSQL.
   // This avoids importing the postgres-adapter module (and its pg dependency)

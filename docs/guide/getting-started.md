@@ -56,7 +56,7 @@ docker compose up
 docker compose --profile redis up
 
 # SQLite escape hatch (single-process only — fastest local boot)
-docker compose --profile sqlite up
+DATABASE_URL= docker compose up backend frontend
 ```
 
 Default env vars in `backend/.env` (already set in `.env.example`):

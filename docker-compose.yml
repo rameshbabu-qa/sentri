@@ -6,15 +6,25 @@
 # Frontend (nginx) proxies /api/* → backend:3001 automatically.
 # Open http://localhost:3000 in your browser.
 #
-# ─── Database (INF-001) ───────────────────────────────────────────────────────
-# By default Sentri uses PostgreSQL (bundled `postgres` service).
-# To use PostgreSQL instead, uncomment the `postgres` service below and set
-# DATABASE_URL on the backend service:
+# ─── Database (INF-001 / INF-008) ─────────────────────────────────────────────
+# By default Sentri uses PostgreSQL (bundled `postgres` service below). The
+# backend's DATABASE_URL is pre-wired at
 #
 #   DATABASE_URL=postgres://sentri:sentri@postgres:5432/sentri
 #
-# Then: docker compose up --build
-# SQLite opt-out: docker compose --profile sqlite up --build
+# so plain `docker compose up --build` brings up Postgres + the backend with
+# no extra steps. Override DATABASE_URL via your shell or `.env` file to point
+# at an externally-managed PostgreSQL instance.
+#
+# SQLite escape hatch (single-process only, fastest local boot — INF-008):
+#
+#   DATABASE_URL= docker compose up --build backend frontend
+#
+# Setting DATABASE_URL to an empty string makes the backend fall back to its
+# better-sqlite3 path (`backend/data/sentri.db`). Restricting the up command
+# to `backend frontend` keeps the bundled `postgres` container from starting;
+# if you ran a full `up` previously, free the port with `docker compose stop
+# postgres`.
 
 services:
   backend:
@@ -61,6 +71,15 @@ services:
     shm_size: "256mb"
     volumes:
       - frontend_dist:/usr/share/frontend:ro
+    depends_on:
+      # Wait for the bundled `postgres` service when it's part of the active
+      # profile set (default for `docker compose up`). `required: false` keeps
+      # the backend startable when the operator points DATABASE_URL at an
+      # externally-managed PostgreSQL or activates the `sqlite` escape-hatch
+      # profile — Compose skips the dependency instead of erroring out.
+      postgres:
+        condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
@@ -72,12 +91,12 @@ services:
   # ── Distributed runner worker (AUTO-008) ────────────────────────────────────
   # Same image as `backend`; overrides CMD to run the queue-only entrypoint
   # (`src/worker.js`) so workers don't bind port 3001. Scale with:
-  #   docker compose --profile redis --profile postgres up -d --scale worker=4
-  # Lives under the `redis` profile because BullMQ requires Redis. The
-  # `postgres` profile is also required by default because workers MUST share
-  # the backend's database (see DATABASE_URL note below) — SQLite cannot be
-  # shared across replicas. Omit `--profile postgres` only if you've pointed
-  # DATABASE_URL at an externally-managed PostgreSQL instance.
+  #   docker compose --profile redis up -d --scale worker=4
+  # Lives under the `redis` profile because BullMQ requires Redis. The bundled
+  # `postgres` service runs by default post-INF-008, so workers automatically
+  # share the backend's database. Workers MUST share the backend's database
+  # (SQLite cannot be shared across replicas) — distributed mode therefore
+  # requires PostgreSQL.
   worker:
     image: ghcr.io/rameshbabuprudhvi/sentri-backend:latest
     build:
@@ -104,9 +123,9 @@ services:
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-2}
       # Workers MUST share the same database as the backend. Distributed mode
       # therefore requires a network-accessible DB (PostgreSQL) — a per-container
-      # SQLite file cannot be shared across replicas. If DATABASE_URL is unset
-      # we default to the bundled `postgres` service (activate with
-      # `--profile redis --profile postgres`).
+      # SQLite file cannot be shared across replicas. The bundled `postgres`
+      # service runs by default post-INF-008; override DATABASE_URL to point
+      # at an externally-managed PostgreSQL instance.
       - DATABASE_URL=${DATABASE_URL:-postgres://sentri:sentri@postgres:5432/sentri}
     restart: unless-stopped
     security_opt:
@@ -157,9 +176,15 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ── Optional PostgreSQL service (INF-001) ──────────────────────────────────
-  # Activate with: docker compose --profile postgres up
-  # Set DATABASE_URL on the backend service (see above).
+  # ── PostgreSQL service (INF-001 / INF-008) ──────────────────────────────────
+  # Runs by default — the backend's DATABASE_URL is pre-wired to this service.
+  # To use SQLite instead, override DATABASE_URL to an empty string at the
+  # shell or via `.env`:
+  #   DATABASE_URL= docker compose up backend frontend
+  # Compose still starts the `postgres` container in that case (it has no
+  # `profiles` key and is therefore always-on), but the backend ignores it
+  # and falls back to its better-sqlite3 path. Stop it explicitly with
+  # `docker compose stop postgres` to free the port.
   postgres:
     image: postgres:16-alpine
     container_name: sentri-postgres
