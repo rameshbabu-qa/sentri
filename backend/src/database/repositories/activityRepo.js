@@ -284,12 +284,24 @@ export function create(activity) {
     // on ISO timestamps so the window is portable across SQLite + Postgres.
     // Match on the full _dedupSig substring inside meta — same portable
     // LIKE pattern used by `countDistinctTestIds.metaIsAutoApproved` above.
+    // SEC-007: dedup lookup with portable NULL-equality semantics.
+    //
+    // SQLite uses `NULL = NULL → NULL` (i.e. false) like standard SQL, so a
+    // bare `userId = ?` predicate would miss rows where both sides are null.
+    // The defensive `OR (userId IS NULL AND ? IS NULL)` arm covers the
+    // null-equals-null case. PostgreSQL behaves identically, but its parser
+    // can't infer the type of a standalone `? IS NULL` bind parameter when
+    // the bound value is also null — the `pg-native` driver surfaces this
+    // as `ERROR: could not determine data type of parameter $N`. An explicit
+    // `::text` cast tells the planner the type. Inline cast (rather than
+    // PREPARE-time type list) keeps the query portable to SQLite, which
+    // ignores `::text` because `?` placeholders are untyped there.
     const recent = db.prepare(`
       SELECT id, count, createdAt
       FROM activities
       WHERE type = ?
-        AND (userId = ? OR (userId IS NULL AND ? IS NULL))
-        AND (workspaceId = ? OR (workspaceId IS NULL AND ? IS NULL))
+        AND (userId = ? OR (userId IS NULL AND CAST(? AS TEXT) IS NULL))
+        AND (workspaceId = ? OR (workspaceId IS NULL AND CAST(? AS TEXT) IS NULL))
         AND createdAt >= ?
         AND meta LIKE ?
       ORDER BY createdAt DESC, CAST(SUBSTR(id, 5) AS INTEGER) DESC

@@ -405,6 +405,35 @@ const _COL_MAP = buildColumnMap([
   // contract, so `getByProjectId('PRJ-GH').installationId` reads as null
   // even when the column is correctly persisted as `enc:v1:…` ciphertext.
   "installationId", "githubCheck",
+  // projects — quality gates (AUTO-012, migration 015) + PII firewall
+  // (SEC-006, migration 034). Without these entries the GET/PATCH
+  // round-trips return `qualityGates: undefined` and the
+  // `__evaluateQualityGatesForTest` evaluator throws
+  // `Cannot read properties of null (reading 'minPassRate')` on Postgres.
+  "qualityGates", "gateResult", "strictPiiFirewall", "piiAllowlist",
+  // crawl_baselines (AUTO-002, migration 022) — repo SELECTs
+  // `pageUrl, fingerprint, capturedAt` and keys the result map by
+  // `row.pageUrl`. Without the remap, `row.pageUrl` is `undefined` on
+  // Postgres and `getMapByProjectId(...)[url]` reads as `undefined`,
+  // breaking `crawl-baseline-repo.test.js:29` (`fingerprint` lookup on
+  // undefined). `fingerprint` is already lowercase so it doesn't need
+  // a remap entry.
+  "pageUrl", "capturedAt",
+  // tests — stale detection (AUTO-013, migration 006) + retry metadata
+  // (AUTO-005, migration 011). `isStale` / `flakyScore` round-trips
+  // power the stale-detector dashboard rollup; `retryCount` is read
+  // per-result by the quality-gates `maxFlakyPct` evaluator.
+  "isStale", "flakyScore", "retryCount", "failedAfterRetry",
+  // runs — AUTO-002 change pages + AUTO-004 impact analysis +
+  // CAP-003 secret-scan flag + AUTO-001 budget minutes + AUTO-010
+  // root causes + AUTO-006 network condition. Each was added in its
+  // own ALTER TABLE migration and not previously surfaced in the
+  // remap — the gap was masked by SQLite-only CI.
+  "changedPages", "removedPages", "changedFiles", "impactAnalysis",
+  "budgetMinutes", "rootCauses", "networkCondition",
+  // users / workspaces — MFA columns (SEC-004, migrations 016 + 032).
+  "mfaSecret", "mfaEnabled", "mfaRecoveryCodes",
+  "mfaRequired", "mfaGracePeriodDays", "mfaPolicyUpdatedAt",
 ]);
 
 /**
