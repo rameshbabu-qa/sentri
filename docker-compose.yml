@@ -24,7 +24,8 @@
 # better-sqlite3 path (`backend/data/sentri.db`). Restricting the up command
 # to `backend frontend` keeps the bundled `postgres` container from starting;
 # if you ran a full `up` previously, free the port with `docker compose stop
-# postgres`.
+# postgres`. (There is no `sqlite` Compose profile — selection is purely
+# driven by DATABASE_URL.)
 
 services:
   backend:
