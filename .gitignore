@@ -25,6 +25,17 @@ backend/artifacts/
 tests/e2e/artifacts/
 tests/e2e/EXECUTION_REPORT.md
 
+# AUTO-022 eval-harness LLM response cache.
+# Lock-file pattern: ignore transient writes (partial recordings, swap files,
+# editor backups) in `.cache/` but ALLOW committed `*.txt` recordings so CI
+# replay-mode runs can read them. New recordings must be added with
+# `git add -f backend/tests/fixtures/eval-goldens/.cache/<id>.<hash>.txt`
+# after an `EVAL_RECORD=1 node backend/scripts/run-eval.mjs` pass. See
+# docs/guide/eval-harness-record-goldens.md § Phase 4.
+backend/tests/fixtures/eval-goldens/.cache/*
+!backend/tests/fixtures/eval-goldens/.cache/*.txt
+!backend/tests/fixtures/eval-goldens/.cache/.gitkeep
+
 # OS files
 .DS_Store
 Thumbs.db
