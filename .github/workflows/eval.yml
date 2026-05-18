@@ -20,6 +20,15 @@ concurrency:
 permissions:
   contents: read
 
+# Pin the model identifier folded into the eval-harness cache key
+# (`pipelineAdapter.js#EVAL_MODEL`). Cache entries committed to
+# `backend/tests/fixtures/eval-goldens/.cache/` were recorded against this
+# exact model; if a maintainer re-records with a different model they MUST
+# bump this value in the same PR so CI replays match. A drifting default
+# would silently miss every cache entry and trip the cold-start guard.
+env:
+  EVAL_MODEL: claude-3-5-sonnet-20241022
+
 jobs:
   eval:
     name: Eval — Golden-set regression check
