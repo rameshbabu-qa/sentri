@@ -123,7 +123,7 @@ export async function createDefaultPipeline() {
       );
       // Minimal project / run stubs — orchestrator only reads ids + url.
       const project = { id: `eval-${golden.id}`, url };
-      const run = { id: `eval-${golden.id}-run`, projectId: project.id, log: [] };
+      const run = { id: `eval-${golden.id}-run`, projectId: project.id, logs: [] };
       const result = await runPostGenerationPipeline(tests, project, run, {
         snapshotsByUrl: { [url]: snapshot },
         classifiedPagesByUrl: { [url]: classifiedPage },
