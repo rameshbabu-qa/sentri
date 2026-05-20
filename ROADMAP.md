@@ -425,20 +425,9 @@ CAP-002's Redis dependency is a single point of failure. Production SaaS deploym
 
 ### AUTO-009 — Browser code coverage mapping 🟢 Differentiator
 
-**Status:** ✅ Complete (PR #19) | **Effort:** L | **Source:** Competitive Gap Analysis
+**Status:** ✅ Complete (PR #19) — see Completed Work Summary above for the full implementation details (MVP + AUTO-009b/c/d/f/g/h/i/j/k follow-ups landed in the same PR).
 
-> **Implementation note — AUTO-009b/c (shipped in PR #19):** Source-map resolution against `project.sourcemapBaseUrl` and statement / branch / function granularity ship together. `backend/src/pipeline/sourceMapResolver.js` uses `source-map@^0.7` behind an LRU cache (10MB / 1h TTL) with the SSRF guard from `utils/ssrfGuard.js`; `backend/src/pipeline/v8ToIstanbul.js` lifts V8 ranges into Istanbul `FileCoverage` so the aggregator reports `statementPct`, `branchPct`, `functionPct` independently of `coveragePct`. `sourceMapStatus` is computed dynamically (`resolved` ≥80%, `partial` >0%, `fallback` 0%); the Dashboard CoveragePanel renders the active metric via a tab toggle and badges `fallback mode` / `partial maps` when source-map resolution is incomplete. RunDetail per-test badges read `+47L · +12B · +3F`. Granularity keys are omitted from the persisted shape when the converter never produces data (byte-identical to pre-009c rows). Pre-existing executeTest.js / dashboard LEAN_COLS / source-map cache-miss bugs flagged by the lifeguard review are fixed in the same PR.
 
-**Problem:** There is no way to know what percentage of application code is exercised by the test suite. Playwright supports V8 code coverage via `page.coverage.startJSCoverage()`. This would answer "what percentage of my app is actually tested?"
-
-**Fix:** Optionally enable JS coverage collection per run via `page.coverage.startJSCoverage()` / `stopJSCoverage()`. Aggregate per-URL coverage into a project-level report. Surface on the dashboard as a "Code Coverage" metric alongside pass rate.
-
-**Files to change:**
-- `backend/src/runner/executeTest.js` — start/stop coverage collection
-- New `backend/src/utils/coverageAggregator.js` — merge per-test coverage data
-- `frontend/src/pages/Dashboard.jsx` — code coverage metric card
-
-**Dependencies:** None
 
 ---
 
