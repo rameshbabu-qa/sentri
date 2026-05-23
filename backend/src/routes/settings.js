@@ -434,6 +434,37 @@ router.get("/ollama/status", async (req, res) => {
 const PR_VALID_FAMILIES = new Set(["anthropic", "openai", "google", "openrouter", "local", "custom"]);
 const PR_VALID_PROTOCOLS = new Set(["openai", "anthropic", "gemini", "ollama"]);
 
+// Per-family canonical baseUrl used when the operator leaves the field blank
+// on create. The Settings form labels baseUrl as "(optional)" — true for
+// users with a self-hosted proxy who DO want to override — but for the
+// 99% case (a vanilla OpenRouter / OpenAI / Anthropic / Google route) the
+// canonical endpoint is well-known and forcing the operator to copy-paste
+// it from documentation is an unnecessary footgun. Without a default, the
+// `provider_routes` row lands with `baseUrl = null`, and the OpenAI SDK at
+// `backend/src/aiProvider/protocols/openai.js#mkClient` falls back to its
+// hardcoded `api.openai.com` endpoint — meaning an OpenRouter-family route
+// with a null baseUrl will silently dispatch OpenRouter keys + OpenRouter
+// `HTTP-Referer` / `X-Title` headers to OpenAI, which OpenAI rejects with
+// 401/402/403 depending on the auth state. The legacy single-provider
+// path didn't have this footgun because `dispatcher.js#OPENROUTER_BASE_URL`
+// hardcoded the URL for transient routes.
+//
+// Family-default at create time (NOT update — operators explicitly clearing
+// `baseUrl` via PATCH should win). The catalog mirrors the constants in
+// `backend/src/aiProvider/dispatcher.js` and the public docs at the
+// vendor's API reference page. Adding a new family here also requires
+// adding it to PR_VALID_FAMILIES above.
+const PR_DEFAULT_BASE_URL = {
+  openrouter: "https://openrouter.ai/api/v1",
+  openai:     "https://api.openai.com/v1",
+  anthropic:  "https://api.anthropic.com",
+  google:     "https://generativelanguage.googleapis.com/v1beta",
+  // `local` (Ollama) and `custom` deliberately omitted — both REQUIRE an
+  // explicit baseUrl from the operator (no canonical default exists), and
+  // the protocol adapter's null-check correctly errors out instead of
+  // silently dispatching to the wrong endpoint.
+};
+
 /**
  * Coerce, validate, and normalise the public request body into the shape
  * `providerRouteRepo.upsert` expects. Returns `{ payload, error }` —
@@ -481,6 +512,18 @@ function buildProviderRoutePayload(body, { isCreate }) {
   if (isCreate || (body && "protocol" in body)) payload.protocol = protocol;
   if (isCreate || (body && "model" in body)) payload.model = model;
   if (body && "baseUrl" in body) payload.baseUrl = baseUrl || null;
+  // Family-default the baseUrl on CREATE when the operator left the field
+  // blank — see `PR_DEFAULT_BASE_URL` above for the rationale. Only fires
+  // when (1) it's a create and (2) the resolved baseUrl is null/empty —
+  // explicit operator overrides (self-hosted proxies, regional endpoints)
+  // win because `payload.baseUrl` was already populated above. PATCH is
+  // intentionally untouched: an admin who clears baseUrl via Settings →
+  // Edit is signalling "I want this column null", and the SDK fallback
+  // (`api.openai.com` for openai-protocol routes) is the documented
+  // behaviour for that case.
+  if (isCreate && !payload.baseUrl && PR_DEFAULT_BASE_URL[family]) {
+    payload.baseUrl = PR_DEFAULT_BASE_URL[family];
+  }
   if (body && "enabled" in body) payload.enabled = !!body.enabled;
   if (body && "rpmLimit" in body) payload.rpmLimit = numOrNull(body.rpmLimit);
   if (body && "tpmLimit" in body) payload.tpmLimit = numOrNull(body.tpmLimit);
