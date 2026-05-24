@@ -280,12 +280,6 @@ Possible fix: integrate with project credential profiles (DIF-010) so the record
 
 ---
 
-### INT-002 / INT-002b — GitHub PR checks + integration polish
-
-**Status:** ✅ Complete (PR #15 / PR #17) — see Completed Work Summary above for the full implementation details.
-
----
-
 ### DIF-009 — Autonomous monitoring mode (always-on QA agent) 🟢 Differentiator
 
 **Status:** 🔲 Planned | **Effort:** M | **Source:** Competitive
